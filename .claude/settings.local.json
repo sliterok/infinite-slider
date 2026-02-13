@@ -4,7 +4,9 @@
       "Bash(pnpm install:*)",
       "Bash(pnpm build:*)",
       "Bash(timeout 8 pnpm dev:*)",
-      "Bash(timeout 6 pnpm dev:*)"
+      "Bash(timeout 6 pnpm dev:*)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm dev)"
     ]
   }
 }

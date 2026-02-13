@@ -1,3 +1,4 @@
 export { InfiniteSlider } from "./InfiniteSlider";
 export { useInfiniteSlider } from "./useInfiniteSlider";
-export type { InfiniteSliderProps, SliderMode } from "./types";
+export type { InfiniteSliderProps } from "./types";
+export type { SliderState } from "./useInfiniteSlider";
