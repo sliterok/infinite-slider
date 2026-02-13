@@ -27,40 +27,47 @@ const HYSTERESIS = 12;
 
 /**
  * Continuous transfer function for precision mode (State B).
- * Maps vertical distance → sensitivity multiplier in [minScale, 1].
+ * Maps upward vertical distance → sensitivity multiplier in [minScale, 1].
  * Uses a quadratic ease-in for a smooth, reversible ramp.
  */
 function getPrecisionScale(
-  dy: number,
+  dyUp: number,
   precisionDistance: number,
   minPrecisionScale: number,
 ): number {
-  const t = clamp(dy / Math.max(precisionDistance, 1), 0, 1);
-  const eased = t * t; // quadratic ease-in
+  if (dyUp <= 0) return 1;
+  const t = clamp(dyUp / Math.max(precisionDistance, 1), 0, 1);
+  const eased = t * t;
   return 1 - eased * (1 - clamp(minPrecisionScale, 0.0001, 1));
 }
 
 /**
- * Determine the mode from vertical offset, with hysteresis to prevent jitter.
+ * Determine mode from directional vertical offsets with hysteresis.
+ *
+ * - Drag UP (dyUp > 0)   → precision mode
+ * - Drag DOWN (dyDown > 0) → infinite / joystick mode
+ * - Near origin           → linear
  */
 function resolveMode(
-  dy: number,
+  dyUp: number,
+  dyDown: number,
   currentMode: SliderMode,
-  precisionDistance: number,
   infiniteThreshold: number,
 ): SliderMode {
-  // Going UP (increasing dy)
   if (currentMode === "linear") {
-    if (dy > HYSTERESIS) return "precision";
+    if (dyDown > HYSTERESIS) return "infinite";
+    if (dyUp > HYSTERESIS) return "precision";
     return "linear";
   }
   if (currentMode === "precision") {
-    if (dy >= infiniteThreshold) return "infinite";
-    if (dy < HYSTERESIS) return "linear";
-    return "precision";
+    // Can't transition directly to infinite from precision —
+    // user must come back near origin first, then go down.
+    if (dyUp < HYSTERESIS && dyDown < HYSTERESIS) return "linear";
+    if (dyUp >= HYSTERESIS) return "precision";
+    return "linear";
   }
   // currentMode === "infinite"
-  if (dy < infiniteThreshold - HYSTERESIS) return "precision";
+  if (dyDown < HYSTERESIS) return "linear";
   return "infinite";
 }
 
@@ -135,15 +142,37 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
     lastTime: 0,
     /** precision scale stored as mutable ref for rAF access */
     precisionScale: 1,
+    /**
+     * Floating-point accumulator for sub-step deltas.
+     * Prevents tiny precision-mode movements from rounding to zero.
+     */
+    accumulator: 0,
   });
 
   // ── Shared helpers ────────────────────────────────────────────
 
-  const commit = useCallback(
+  /** Apply a raw delta to the accumulator and commit when it crosses a step. */
+  const commitDelta = useCallback(
     (delta: number) => {
       if (delta === 0) return;
-      const next = roundToStep(clamp(valueRef.current + delta, min, max), step, min);
-      if (next !== valueRef.current) onChangeRef.current(next);
+      const d = ds.current;
+      d.accumulator += delta;
+      const next = roundToStep(clamp(d.accumulator, min, max), step, min);
+      if (next !== valueRef.current) {
+        onChangeRef.current(next);
+      }
+    },
+    [min, max, step],
+  );
+
+  /** Snap the accumulator to a specific value (used on pointer-down). */
+  const setAbsolute = useCallback(
+    (val: number) => {
+      const snapped = roundToStep(clamp(val, min, max), step, min);
+      ds.current.accumulator = snapped;
+      if (snapped !== valueRef.current) {
+        onChangeRef.current(snapped);
+      }
     },
     [min, max, step],
   );
@@ -167,9 +196,9 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
         // ── Joystick velocity: displacement from anchor → speed ──
         const displacement = d.pointerX - d.anchorX;
         const t = clamp(displacement / Math.max(infiniteRadius, 1), -1, 1);
-        const curved = Math.sign(t) * t * t; // quadratic ramp
+        const curved = Math.sign(t) * t * t;
         const velocity = curved * range * infiniteSpeed;
-        commit(velocity * dt);
+        commitDelta(velocity * dt);
       } else if (d.overshoot !== 0) {
         // ── Edge overflow velocity ──
         const velocity = getEdgeVelocity(
@@ -178,16 +207,15 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
           edgeScrollSpeed,
           edgeActivationDistance,
         );
-        commit(velocity * dt * d.precisionScale);
+        commitDelta(velocity * dt * d.precisionScale);
       } else {
-        // Nothing to do — stop loop
         d.rafId = 0;
         return;
       }
 
       d.rafId = requestAnimationFrame(velocityLoop);
     },
-    [range, infiniteSpeed, infiniteRadius, edgeScrollSpeed, edgeActivationDistance, commit],
+    [range, infiniteSpeed, infiniteRadius, edgeScrollSpeed, edgeActivationDistance, commitDelta],
   );
 
   const ensureLoop = useCallback(() => {
@@ -214,6 +242,12 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
       if (!track) return;
 
       track.setPointerCapture(e.pointerId);
+      const rect = track.getBoundingClientRect();
+
+      // ── Absolute positioning: click sets the value ──
+      const fraction = clamp((e.clientX - rect.left) / rect.width, 0, 1);
+      const clickValue = min + fraction * range;
+
       const d = ds.current;
       d.active = true;
       d.pointerId = e.pointerId;
@@ -228,8 +262,10 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
       setMode("linear");
       setPrecisionScale(1);
       setIsDragging(true);
+
+      setAbsolute(clickValue);
     },
-    [disabled],
+    [disabled, min, range, setAbsolute],
   );
 
   const onPointerMove = useCallback(
@@ -242,10 +278,16 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
       d.pointerX = e.clientX;
       const rect = track.getBoundingClientRect();
 
-      // ── Resolve mode from vertical offset ──
-      const dy = Math.abs(e.clientY - d.startY);
+      // ── Directional vertical offsets ──
+      // dyUp > 0 means pointer is ABOVE the start point
+      // dyDown > 0 means pointer is BELOW the start point
+      const rawDy = e.clientY - d.startY;
+      const dyUp = Math.max(0, -rawDy);   // negative clientY diff = moved up
+      const dyDown = Math.max(0, rawDy);   // positive clientY diff = moved down
+
+      // ── Resolve mode ──
       const prevMode = modeRef.current;
-      const nextMode = resolveMode(dy, prevMode, precisionDistance, infiniteThreshold);
+      const nextMode = resolveMode(dyUp, dyDown, prevMode, infiniteThreshold);
 
       if (nextMode !== prevMode) {
         modeRef.current = nextMode;
@@ -256,17 +298,21 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
           d.anchorX = e.clientX;
           ensureLoop();
         } else if (prevMode === "infinite") {
-          // Leaving infinite → reset prevX to avoid jump
+          // Leaving infinite → reset prevX to current position to avoid jump
           d.prevX = e.clientX;
           stopLoop();
         }
+
+        if (nextMode === "precision" && prevMode === "linear") {
+          // Entering precision: reset prevX so the scale change doesn't cause a jump
+          d.prevX = e.clientX;
+        }
       }
 
-      // ── Update precision scale (applies to linear + precision) ──
+      // ── Update precision scale (only matters for linear + precision) ──
       if (nextMode !== "infinite") {
-        const scale = getPrecisionScale(dy, precisionDistance, minPrecisionScale);
+        const scale = getPrecisionScale(dyUp, precisionDistance, minPrecisionScale);
         d.precisionScale = scale;
-        // Only update React state at meaningful granularity
         const rounded = Number(scale.toFixed(3));
         setPrecisionScale(rounded);
       }
@@ -282,7 +328,7 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
       if (dx !== 0) {
         const baseUnit = step > 0 ? step : Math.max(range / 1000, 1);
         const delta = (dx / Math.max(sensitivity, 0.001)) * baseUnit * d.precisionScale;
-        commit(delta);
+        commitDelta(delta);
       }
 
       // ── Edge overflow detection ──
@@ -294,7 +340,6 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
         ensureLoop();
       } else if (d.overshoot !== 0) {
         d.overshoot = 0;
-        // Loop will self-stop when overshoot === 0 and mode !== infinite
       }
     },
     [
@@ -304,7 +349,7 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
       sensitivity,
       step,
       range,
-      commit,
+      commitDelta,
       ensureLoop,
       stopLoop,
     ],
@@ -330,6 +375,14 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
     },
     [stopLoop],
   );
+
+  // ── Keep accumulator in sync with external value changes ──────
+
+  useEffect(() => {
+    if (!ds.current.active) {
+      ds.current.accumulator = value;
+    }
+  }, [value]);
 
   // ── Cleanup ───────────────────────────────────────────────────
 

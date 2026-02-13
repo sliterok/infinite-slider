@@ -66,22 +66,21 @@ export function App() {
         <strong>Three-state interaction model:</strong>
         <ul style={{ paddingLeft: 18, marginTop: 4 }}>
           <li>
-            <b>Linear</b> — Drag left/right to change value directly.
+            <b>Linear</b> — Click to set value, drag left/right to adjust.
           </li>
           <li>
-            <b>Precision</b> — Move pointer up/down while dragging. The
-            further from the track, the finer the control (continuous, not
-            stepped).
+            <b>Precision</b> — Drag <em>upward</em> while holding. The higher
+            you go, the finer the control. Origin resets on entry (like
+            YouTube scrubbing).
           </li>
           <li>
-            <b>Infinite</b> — Move pointer far up/down to enter joystick mode.
-            Horizontal displacement from the anchor controls the speed and
-            direction of value change. Hold right = value increases, hold left =
-            decreases. Further = faster.
+            <b>Infinite</b> — Drag <em>downward</em> to enter joystick mode.
+            Horizontal offset from the entry point controls speed and
+            direction. Hold right = increase, left = decrease.
           </li>
           <li>
-            <b>Edge overflow</b> — In linear/precision modes, dragging past the
-            track edge auto-scrolls the value.
+            <b>Edge overflow</b> — In linear/precision modes, dragging past
+            the track edge auto-scrolls the value.
           </li>
         </ul>
       </div>
