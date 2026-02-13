@@ -1,9 +1,7 @@
 import React from "react";
 import type { InfiniteSliderProps } from "./types";
 import { useInfiniteSlider } from "./useInfiniteSlider";
-import { formatDefault } from "./utils";
-
-const DEFAULT_GEARS = [0.01, 0.1, 1, 10, 100];
+import { clamp, formatDefault } from "./utils";
 
 export const InfiniteSlider: React.FC<InfiniteSliderProps> = ({
   value,
@@ -12,28 +10,50 @@ export const InfiniteSlider: React.FC<InfiniteSliderProps> = ({
   max = 100,
   step = 1,
   sensitivity = 2,
-  gears = DEFAULT_GEARS,
-  defaultGearIndex = 2,
-  edgeScrollSpeed = 0.3,
+  precisionDistance = 140,
+  minPrecisionScale = 0.01,
+  edgeScrollSpeed = 1.2,
+  edgeActivationDistance = 220,
   disabled = false,
   className,
   style,
   formatValue = formatDefault,
 }) => {
-  const { trackRef, isDragging, currentGear, bind } = useInfiniteSlider({
+  const {
+    trackRef,
+    isDragging,
+    isVelocityMode,
+    precisionMode,
+    precisionScale,
+    bind,
+  } = useInfiniteSlider({
     value,
     onChange,
     min,
     max,
     step,
     sensitivity,
-    gears,
-    defaultGearIndex,
+    precisionDistance,
+    minPrecisionScale,
     edgeScrollSpeed,
+    edgeActivationDistance,
     disabled,
   });
 
-  const pct = max === min ? 0 : ((value - min) / (max - min)) * 100;
+  const span = max - min;
+  const clampedValue = clamp(value, min, max);
+  const pct = span <= 0 ? 0 : ((clampedValue - min) / span) * 100;
+
+  const feedbackLabel = isVelocityMode
+    ? "velocity"
+    : precisionMode === "fine"
+      ? "fine"
+      : "coarse";
+  const feedbackColor = isVelocityMode
+    ? "#9a3f00"
+    : precisionMode === "fine"
+      ? "#0d6a3f"
+      : "#2b2b2b";
 
   return (
     <div
@@ -45,7 +65,6 @@ export const InfiniteSlider: React.FC<InfiniteSliderProps> = ({
         ...style,
       }}
     >
-      {/* Track */}
       <div
         ref={trackRef}
         {...bind}
@@ -57,9 +76,9 @@ export const InfiniteSlider: React.FC<InfiniteSliderProps> = ({
           cursor: disabled ? "default" : "ew-resize",
           touchAction: "none",
           overflow: "hidden",
+          outline: isDragging ? "1px solid #6e6e6e" : "1px solid transparent",
         }}
       >
-        {/* Filled portion */}
         <div
           style={{
             position: "absolute",
@@ -74,7 +93,6 @@ export const InfiniteSlider: React.FC<InfiniteSliderProps> = ({
           }}
         />
 
-        {/* Thumb */}
         <div
           style={{
             position: "absolute",
@@ -92,7 +110,6 @@ export const InfiniteSlider: React.FC<InfiniteSliderProps> = ({
         />
       </div>
 
-      {/* Value + Gear display */}
       <div
         style={{
           display: "flex",
@@ -104,18 +121,23 @@ export const InfiniteSlider: React.FC<InfiniteSliderProps> = ({
           color: "#555",
         }}
       >
-        <span>{formatValue(value)}</span>
+        <span>{formatValue(clampedValue)}</span>
         {isDragging && (
           <span
             style={{
-              padding: "1px 6px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "2px 7px",
               borderRadius: 4,
-              background: "#333",
+              background: feedbackColor,
               color: "#fff",
               fontSize: 11,
+              textTransform: "uppercase",
             }}
           >
-            ×{currentGear}
+            <span>{feedbackLabel}</span>
+            <span style={{ opacity: 0.85 }}>x{precisionScale.toFixed(3)}</span>
           </span>
         )}
       </div>

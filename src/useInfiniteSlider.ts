@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { clamp, roundToStep } from "./utils";
 
-const DEFAULT_GEARS = [0.01, 0.1, 1, 10, 100];
+type PrecisionMode = "coarse" | "fine";
 
 interface UseInfiniteSliderOptions {
   value: number;
@@ -10,10 +10,50 @@ interface UseInfiniteSliderOptions {
   max: number;
   step: number;
   sensitivity: number;
-  gears: number[];
-  defaultGearIndex: number;
+  precisionDistance: number;
+  minPrecisionScale: number;
   edgeScrollSpeed: number;
+  edgeActivationDistance: number;
   disabled: boolean;
+}
+
+function getPrecisionScale(
+  distanceFromOriginY: number,
+  precisionDistance: number,
+  minPrecisionScale: number
+): number {
+  const normalized = clamp(
+    distanceFromOriginY / Math.max(precisionDistance, 1),
+    0,
+    1
+  );
+  const eased = normalized * normalized;
+  const boundedMinScale = clamp(minPrecisionScale, 0.0001, 1);
+  return 1 - eased * (1 - boundedMinScale);
+}
+
+function getEdgeVelocityPerSecond(
+  overshootPx: number,
+  range: number,
+  step: number,
+  edgeScrollSpeed: number,
+  edgeActivationDistance: number
+): number {
+  if (range <= 0 || overshootPx === 0) return 0;
+
+  const direction = Math.sign(overshootPx);
+  const normalized = clamp(
+    Math.abs(overshootPx) / Math.max(edgeActivationDistance, 1),
+    0,
+    1
+  );
+  const ramp = normalized * normalized;
+
+  const minSpeed = Math.max(step, range * 0.002) * 30;
+  const maxSpeed = Math.max(minSpeed, range * Math.max(edgeScrollSpeed, 0));
+  const speed = minSpeed + (maxSpeed - minSpeed) * ramp;
+
+  return direction * speed;
 }
 
 export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
@@ -24,26 +64,28 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
     max,
     step,
     sensitivity,
-    gears,
-    defaultGearIndex,
+    precisionDistance,
+    minPrecisionScale,
     edgeScrollSpeed,
+    edgeActivationDistance,
     disabled,
   } = opts;
 
   const trackRef = useRef<HTMLDivElement>(null);
-  const [gearIndex, setGearIndex] = useState(defaultGearIndex);
   const [isDragging, setIsDragging] = useState(false);
+  const [isVelocityMode, setIsVelocityMode] = useState(false);
+  const [precisionScale, setPrecisionScale] = useState(1);
+  const precisionScaleRef = useRef(1);
+  const precisionMode: PrecisionMode = precisionScale <= 0.35 ? "fine" : "coarse";
 
-  // Mutable refs for drag state (avoid stale closures in rAF)
   const dragState = useRef({
     active: false,
-    startX: 0,
-    startValue: 0,
     pointerId: -1,
     pointerX: 0,
+    startY: 0,
     rafId: 0,
     lastTime: 0,
-    overshoot: 0, // px past edge, signed
+    overshoot: 0,
   });
 
   const valueRef = useRef(value);
@@ -52,43 +94,60 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
-  const gearsRef = useRef(gears);
-  gearsRef.current = gears;
+  const applyValueDelta = useCallback(
+    (delta: number) => {
+      if (delta === 0) return;
 
-  const gearIndexRef = useRef(gearIndex);
-  gearIndexRef.current = gearIndex;
+      const nextValue = roundToStep(
+        clamp(valueRef.current + delta, min, max),
+        step,
+        min
+      );
+      if (nextValue !== valueRef.current) {
+        onChangeRef.current(nextValue);
+      }
+    },
+    [min, max, step]
+  );
 
-  // ---- Edge-scroll rAF loop ----
   const edgeScrollLoop = useCallback(
     (time: number) => {
       const ds = dragState.current;
       if (!ds.active || ds.overshoot === 0) {
         ds.rafId = 0;
+        setIsVelocityMode(false);
         return;
       }
+
       const dt = ds.lastTime ? (time - ds.lastTime) / 1000 : 0.016;
       ds.lastTime = time;
 
-      const gear = gearsRef.current[gearIndexRef.current] ?? 1;
-      const velocity = ds.overshoot * gear * step * edgeScrollSpeed;
-      const delta = velocity * dt;
-      const newValue = roundToStep(
-        clamp(valueRef.current + delta, min, max),
-        step
+      const velocity = getEdgeVelocityPerSecond(
+        ds.overshoot,
+        max - min,
+        step,
+        edgeScrollSpeed,
+        edgeActivationDistance
       );
-
-      if (newValue !== valueRef.current) {
-        onChangeRef.current(newValue);
-      }
+      applyValueDelta(velocity * dt);
 
       ds.rafId = requestAnimationFrame(edgeScrollLoop);
     },
-    [min, max, step, edgeScrollSpeed]
+    [
+      min,
+      max,
+      step,
+      edgeScrollSpeed,
+      edgeActivationDistance,
+      applyValueDelta,
+    ]
   );
 
   const startEdgeScroll = useCallback(() => {
     const ds = dragState.current;
-    if (ds.rafId) return; // already running
+    if (ds.rafId) return;
+
+    setIsVelocityMode(true);
     ds.lastTime = 0;
     ds.rafId = requestAnimationFrame(edgeScrollLoop);
   }, [edgeScrollLoop]);
@@ -100,25 +159,35 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
       ds.rafId = 0;
     }
     ds.overshoot = 0;
+    setIsVelocityMode(false);
   }, []);
 
-  // ---- Pointer handlers ----
+  const updatePrecisionScale = useCallback((nextScale: number) => {
+    const rounded = Number(clamp(nextScale, 0.0001, 1).toFixed(3));
+    if (rounded === precisionScaleRef.current) return;
+
+    precisionScaleRef.current = rounded;
+    setPrecisionScale(rounded);
+  }, []);
+
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (disabled) return;
+
       const track = trackRef.current;
       if (!track) return;
 
       track.setPointerCapture(e.pointerId);
       const ds = dragState.current;
       ds.active = true;
-      ds.startX = e.clientX;
-      ds.startValue = value;
       ds.pointerId = e.pointerId;
       ds.pointerX = e.clientX;
+      ds.startY = e.clientY;
+
       setIsDragging(true);
+      updatePrecisionScale(1);
     },
-    [disabled, value]
+    [disabled, updatePrecisionScale]
   );
 
   const onPointerMove = useCallback(
@@ -129,38 +198,53 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
       const track = trackRef.current;
       if (!track) return;
 
-      ds.pointerX = e.clientX;
       const rect = track.getBoundingClientRect();
-      const leftEdge = rect.left;
-      const rightEdge = rect.right;
+      const boundedX = clamp(e.clientX, rect.left, rect.right);
+      const dx = boundedX - ds.pointerX;
+      ds.pointerX = boundedX;
 
-      // Check edge overflow
-      if (e.clientX < leftEdge) {
-        ds.overshoot = e.clientX - leftEdge; // negative
+      const scale = getPrecisionScale(
+        Math.abs(e.clientY - ds.startY),
+        precisionDistance,
+        minPrecisionScale
+      );
+      updatePrecisionScale(scale);
+
+      if (dx !== 0) {
+        const baseUnit = step > 0 ? step : Math.max((max - min) / 1000, 1);
+        const delta =
+          (dx / Math.max(sensitivity, 0.001)) * baseUnit * precisionScaleRef.current;
+        applyValueDelta(delta);
+      }
+
+      if (e.clientX < rect.left) {
+        ds.overshoot = e.clientX - rect.left;
         startEdgeScroll();
         return;
       }
-      if (e.clientX > rightEdge) {
-        ds.overshoot = e.clientX - rightEdge; // positive
+
+      if (e.clientX > rect.right) {
+        ds.overshoot = e.clientX - rect.right;
         startEdgeScroll();
         return;
       }
 
-      // Within track — stop edge scroll if running
       if (ds.overshoot !== 0) {
         stopEdgeScroll();
       }
-
-      const dx = e.clientX - ds.startX;
-      const gear = gears[gearIndexRef.current] ?? 1;
-      const delta = (dx / sensitivity) * step * gear;
-      const newValue = roundToStep(clamp(ds.startValue + delta, min, max), step);
-
-      if (newValue !== valueRef.current) {
-        onChangeRef.current(newValue);
-      }
     },
-    [gears, sensitivity, step, min, max, startEdgeScroll, stopEdgeScroll]
+    [
+      precisionDistance,
+      minPrecisionScale,
+      sensitivity,
+      step,
+      min,
+      max,
+      updatePrecisionScale,
+      applyValueDelta,
+      startEdgeScroll,
+      stopEdgeScroll,
+    ]
   );
 
   const onPointerUp = useCallback(
@@ -173,7 +257,7 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
         try {
           track.releasePointerCapture(e.pointerId);
         } catch {
-          // already released
+          // noop
         }
       }
 
@@ -181,33 +265,11 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
       ds.pointerId = -1;
       stopEdgeScroll();
       setIsDragging(false);
+      updatePrecisionScale(1);
     },
-    [stopEdgeScroll]
+    [stopEdgeScroll, updatePrecisionScale]
   );
 
-  const onWheel = useCallback(
-    (e: React.WheelEvent) => {
-      if (!dragState.current.active) return;
-      e.preventDefault();
-      setGearIndex((prev) => {
-        const next =
-          e.deltaY < 0
-            ? Math.min(prev + 1, gears.length - 1)
-            : Math.max(prev - 1, 0);
-        gearIndexRef.current = next;
-
-        // Reset drag origin so the gear change doesn't cause a jump
-        const ds = dragState.current;
-        ds.startX = ds.pointerX;
-        ds.startValue = valueRef.current;
-
-        return next;
-      });
-    },
-    [gears.length]
-  );
-
-  // Cleanup rAF on unmount
   useEffect(() => {
     return () => {
       const ds = dragState.current;
@@ -215,17 +277,30 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!disabled) return;
+
+    const ds = dragState.current;
+    if (!ds.active) return;
+
+    ds.active = false;
+    ds.pointerId = -1;
+    stopEdgeScroll();
+    setIsDragging(false);
+    updatePrecisionScale(1);
+  }, [disabled, stopEdgeScroll, updatePrecisionScale]);
+
   return {
     trackRef,
     isDragging,
-    currentGear: gears[gearIndex] ?? 1,
-    gearIndex,
+    isVelocityMode,
+    precisionMode,
+    precisionScale,
     bind: {
       onPointerDown,
       onPointerMove,
       onPointerUp,
       onPointerCancel: onPointerUp,
-      onWheel,
     },
   };
 }

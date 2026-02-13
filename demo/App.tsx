@@ -7,28 +7,30 @@ export function App() {
   const [precise, setPrecise] = useState(0.5);
 
   return (
-    <div style={{ maxWidth: 520, margin: "0 auto" }}>
+    <div style={{ maxWidth: 560, margin: "0 auto" }}>
       <h1 style={{ fontSize: 22, marginBottom: 32 }}>Infinite Slider Demo</h1>
 
-      <Section title="Default (0 – 100)">
+      <Section title="Default (0 - 100)">
         <InfiniteSlider value={basic} onChange={setBasic} />
       </Section>
 
-      <Section title="Large range (0 – 1,000,000)">
+      <Section title="Wide range with adaptive precision (0 - 1,000,000)">
         <InfiniteSlider
           value={large}
           onChange={setLarge}
           min={0}
           max={1_000_000}
-          step={1}
-          sensitivity={0.5}
-          gears={[1, 10, 100, 1000, 10000]}
-          defaultGearIndex={2}
-          formatValue={(v) => v.toLocaleString()}
+          step={0.01}
+          sensitivity={2}
+          precisionDistance={170}
+          minPrecisionScale={0.0005}
+          edgeScrollSpeed={1.6}
+          edgeActivationDistance={200}
+          formatValue={(v) => v.toLocaleString(undefined, { maximumFractionDigits: 2 })}
         />
       </Section>
 
-      <Section title="High precision (0 – 1, step 0.001)">
+      <Section title="High precision (0 - 1, step 0.001)">
         <InfiniteSlider
           value={precise}
           onChange={setPrecise}
@@ -36,8 +38,9 @@ export function App() {
           max={1}
           step={0.001}
           sensitivity={4}
-          gears={[0.001, 0.01, 0.1, 1]}
-          defaultGearIndex={2}
+          precisionDistance={120}
+          minPrecisionScale={0.02}
+          edgeScrollSpeed={1}
           formatValue={(v) => v.toFixed(3)}
         />
       </Section>
@@ -53,15 +56,13 @@ export function App() {
           color: "#666",
         }}
       >
-        <strong>How to use:</strong>
+        <strong>Interaction model:</strong>
         <ul style={{ paddingLeft: 18, marginTop: 4 }}>
-          <li>Drag within the track to change the value.</li>
+          <li>Drag left or right to change value in coarse mode.</li>
+          <li>Move the pointer up or down while dragging for fine precision.</li>
           <li>
-            Drag <em>past the edge</em> of the track — the value auto-scrolls
-            faster the further you go.
-          </li>
-          <li>
-            Scroll the mouse wheel while dragging to shift gears (sensitivity).
+            Push past left or right track edges to enter velocity mode for fast range
+            traversal.
           </li>
         </ul>
       </div>

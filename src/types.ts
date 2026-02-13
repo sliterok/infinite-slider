@@ -11,14 +11,19 @@ export interface InfiniteSliderProps {
   max?: number;
   /** Smallest allowed step increment (default: 1) */
   step?: number;
-  /** Base pixels per step — higher = less sensitive (default: 2) */
+  /** Base pixels per step in coarse mode (default: 2) */
   sensitivity?: number;
-  /** Gear multipliers for the step, ordered smallest to largest (default: [0.01, 0.1, 1, 10, 100]) */
-  gears?: number[];
-  /** Index into gears[] for the initial gear (default: 2) */
-  defaultGearIndex?: number;
-  /** Speed factor for edge-overflow auto-scroll (default: 0.3) */
+  /**
+   * Vertical distance in pixels required to reach minimum sensitivity.
+   * Move farther from the drag origin for finer control. (default: 140)
+   */
+  precisionDistance?: number;
+  /** Minimum sensitivity multiplier reached in fine mode (default: 0.01) */
+  minPrecisionScale?: number;
+  /** Range-per-second speed at max horizontal edge overshoot (default: 1.2) */
   edgeScrollSpeed?: number;
+  /** Horizontal overshoot in px needed to reach max edge velocity (default: 220) */
+  edgeActivationDistance?: number;
   /** Disable the control */
   disabled?: boolean;
   /** Additional class name on the root element */
