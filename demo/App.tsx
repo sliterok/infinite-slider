@@ -10,11 +10,11 @@ export function App() {
     <div style={{ maxWidth: 560, margin: "0 auto" }}>
       <h1 style={{ fontSize: 22, marginBottom: 32 }}>Infinite Slider Demo</h1>
 
-      <Section title="Default (0 - 100)">
+      <Section title="Default (0 – 100)">
         <InfiniteSlider value={basic} onChange={setBasic} />
       </Section>
 
-      <Section title="Wide range with adaptive precision (0 - 1,000,000)">
+      <Section title="Wide range (0 – 1,000,000)">
         <InfiniteSlider
           value={large}
           onChange={setLarge}
@@ -22,15 +22,19 @@ export function App() {
           max={1_000_000}
           step={0.01}
           sensitivity={2}
-          precisionDistance={170}
-          minPrecisionScale={0.0005}
-          edgeScrollSpeed={1.6}
-          edgeActivationDistance={200}
-          formatValue={(v) => v.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          precisionDistance={150}
+          minPrecisionScale={0.001}
+          infiniteThreshold={200}
+          infiniteSpeed={2.5}
+          infiniteRadius={250}
+          edgeScrollSpeed={1.5}
+          formatValue={(v) =>
+            v.toLocaleString(undefined, { maximumFractionDigits: 2 })
+          }
         />
       </Section>
 
-      <Section title="High precision (0 - 1, step 0.001)">
+      <Section title="High precision (0 – 1, step 0.001)">
         <InfiniteSlider
           value={precise}
           onChange={setPrecise}
@@ -40,7 +44,10 @@ export function App() {
           sensitivity={4}
           precisionDistance={120}
           minPrecisionScale={0.02}
-          edgeScrollSpeed={1}
+          infiniteThreshold={180}
+          infiniteSpeed={1.0}
+          infiniteRadius={200}
+          edgeScrollSpeed={0.8}
           formatValue={(v) => v.toFixed(3)}
         />
       </Section>
@@ -56,13 +63,25 @@ export function App() {
           color: "#666",
         }}
       >
-        <strong>Interaction model:</strong>
+        <strong>Three-state interaction model:</strong>
         <ul style={{ paddingLeft: 18, marginTop: 4 }}>
-          <li>Drag left or right to change value in coarse mode.</li>
-          <li>Move the pointer up or down while dragging for fine precision.</li>
           <li>
-            Push past left or right track edges to enter velocity mode for fast range
-            traversal.
+            <b>Linear</b> — Drag left/right to change value directly.
+          </li>
+          <li>
+            <b>Precision</b> — Move pointer up/down while dragging. The
+            further from the track, the finer the control (continuous, not
+            stepped).
+          </li>
+          <li>
+            <b>Infinite</b> — Move pointer far up/down to enter joystick mode.
+            Horizontal displacement from the anchor controls the speed and
+            direction of value change. Hold right = value increases, hold left =
+            decreases. Further = faster.
+          </li>
+          <li>
+            <b>Edge overflow</b> — In linear/precision modes, dragging past the
+            track edge auto-scrolls the value.
           </li>
         </ul>
       </div>

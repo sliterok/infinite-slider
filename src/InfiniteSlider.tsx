@@ -10,23 +10,19 @@ export const InfiniteSlider: React.FC<InfiniteSliderProps> = ({
   max = 100,
   step = 1,
   sensitivity = 2,
-  precisionDistance = 140,
+  precisionDistance = 150,
   minPrecisionScale = 0.01,
+  infiniteThreshold = 200,
+  infiniteSpeed = 2.0,
+  infiniteRadius = 200,
   edgeScrollSpeed = 1.2,
-  edgeActivationDistance = 220,
+  edgeActivationDistance = 200,
   disabled = false,
   className,
   style,
   formatValue = formatDefault,
 }) => {
-  const {
-    trackRef,
-    isDragging,
-    isVelocityMode,
-    precisionMode,
-    precisionScale,
-    bind,
-  } = useInfiniteSlider({
+  const { trackRef, isDragging, mode, precisionScale, bind } = useInfiniteSlider({
     value,
     onChange,
     min,
@@ -35,6 +31,9 @@ export const InfiniteSlider: React.FC<InfiniteSliderProps> = ({
     sensitivity,
     precisionDistance,
     minPrecisionScale,
+    infiniteThreshold,
+    infiniteSpeed,
+    infiniteRadius,
     edgeScrollSpeed,
     edgeActivationDistance,
     disabled,
@@ -44,16 +43,18 @@ export const InfiniteSlider: React.FC<InfiniteSliderProps> = ({
   const clampedValue = clamp(value, min, max);
   const pct = span <= 0 ? 0 : ((clampedValue - min) / span) * 100;
 
-  const feedbackLabel = isVelocityMode
-    ? "velocity"
-    : precisionMode === "fine"
-      ? "fine"
-      : "coarse";
-  const feedbackColor = isVelocityMode
-    ? "#9a3f00"
-    : precisionMode === "fine"
-      ? "#0d6a3f"
-      : "#2b2b2b";
+  // ── Mode-dependent visual feedback ────────────────────────────
+  const modeLabel =
+    mode === "infinite" ? "infinite" : mode === "precision" ? "precision" : "linear";
+  const modeColor =
+    mode === "infinite" ? "#9a3f00" : mode === "precision" ? "#0d6a3f" : "#2b2b2b";
+
+  const trackOutline =
+    mode === "infinite"
+      ? "2px solid #d97706"
+      : mode === "precision"
+        ? "1px solid #6e6e6e"
+        : "1px solid transparent";
 
   return (
     <div
@@ -65,6 +66,7 @@ export const InfiniteSlider: React.FC<InfiniteSliderProps> = ({
         ...style,
       }}
     >
+      {/* Track */}
       <div
         ref={trackRef}
         {...bind}
@@ -76,9 +78,11 @@ export const InfiniteSlider: React.FC<InfiniteSliderProps> = ({
           cursor: disabled ? "default" : "ew-resize",
           touchAction: "none",
           overflow: "hidden",
-          outline: isDragging ? "1px solid #6e6e6e" : "1px solid transparent",
+          outline: trackOutline,
+          transition: "outline-color 0.15s",
         }}
       >
+        {/* Filled portion */}
         <div
           style={{
             position: "absolute",
@@ -86,13 +90,14 @@ export const InfiniteSlider: React.FC<InfiniteSliderProps> = ({
             left: 0,
             bottom: 0,
             width: `${pct}%`,
-            background: "#4f8cff",
+            background: mode === "infinite" ? "#f59e0b" : "#4f8cff",
             borderRadius: 6,
             pointerEvents: "none",
             transition: isDragging ? "none" : "width 0.1s ease-out",
           }}
         />
 
+        {/* Thumb */}
         <div
           style={{
             position: "absolute",
@@ -110,6 +115,7 @@ export const InfiniteSlider: React.FC<InfiniteSliderProps> = ({
         />
       </div>
 
+      {/* Value + mode feedback */}
       <div
         style={{
           display: "flex",
@@ -130,14 +136,16 @@ export const InfiniteSlider: React.FC<InfiniteSliderProps> = ({
               gap: 6,
               padding: "2px 7px",
               borderRadius: 4,
-              background: feedbackColor,
+              background: modeColor,
               color: "#fff",
               fontSize: 11,
               textTransform: "uppercase",
             }}
           >
-            <span>{feedbackLabel}</span>
-            <span style={{ opacity: 0.85 }}>x{precisionScale.toFixed(3)}</span>
+            <span>{modeLabel}</span>
+            {mode !== "infinite" && (
+              <span style={{ opacity: 0.85 }}>x{precisionScale.toFixed(3)}</span>
+            )}
           </span>
         )}
       </div>
