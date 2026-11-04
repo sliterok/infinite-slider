@@ -5,6 +5,8 @@ export interface UseInfiniteSliderOptions {
   onChange: (v: number) => void;
   windowStart?: number;
   windowEnd?: number;
+  min?: number;
+  max?: number;
   step?: number;
   edgeZone?: number;
   maxShiftSpeed?: number;
@@ -30,6 +32,8 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
     onChange,
     windowStart: initWinStart = 0,
     windowEnd: initWinEnd = 100,
+    min = -Infinity,
+    max = Infinity,
     step = 1,
     edgeZone = 0.15,
     maxShiftSpeed = 200,
@@ -60,17 +64,17 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
 
   // ── helpers ──────────────────────────────────────────────
 
-  const snap = useCallback(
-    (v: number) => (step > 0 ? Math.round(v / step) * step : v),
-    [step],
+  const clamp = useCallback(
+    (v: number) => Math.min(max, Math.max(min, step > 0 ? Math.round(v / step) * step : v)),
+    [step, min, max],
   );
 
   const ratioToValue = useCallback(
     (ratio: number) => {
       const { start, end } = liveWin.current;
-      return snap(start + ratio * (end - start));
+      return clamp(start + ratio * (end - start));
     },
-    [snap],
+    [clamp],
   );
 
   // ── rAF loop for edge-shifting ──────────────────────────
@@ -105,22 +109,32 @@ export function useInfiniteSlider(opts: UseInfiniteSliderOptions) {
 
         const { start, end } = liveWin.current;
         const span = end - start;
-        const newStart = start + delta;
-        const newEnd = newStart + span;
+        let newStart = start + delta;
+        let newEnd = newStart + span;
+
+        // Clamp window so it doesn't shift past hard limits.
+        if (isFinite(min) && newStart < min) {
+          newStart = min;
+          newEnd = min + span;
+        }
+        if (isFinite(max) && newEnd > max) {
+          newEnd = max;
+          newStart = max - span;
+        }
 
         liveWin.current = { start: newStart, end: newEnd };
         setWinStart(newStart);
         setWinEnd(newEnd);
 
         // Re-derive value from the (unchanged) knob position in the new window.
-        const newVal = snap(newStart + x * span);
+        const newVal = clamp(newStart + x * span);
         liveValue.current = newVal;
         onChange(newVal);
       }
 
       rafRef.current = requestAnimationFrame(tick);
     },
-    [edgeZone, maxShiftSpeed, onChange, snap],
+    [edgeZone, maxShiftSpeed, min, max, onChange, clamp],
   );
 
   // ── pointer helpers ─────────────────────────────────────

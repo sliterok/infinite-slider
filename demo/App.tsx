@@ -5,6 +5,7 @@ export function App() {
   const [v1, setV1] = useState(50);
   const [v2, setV2] = useState(0);
   const [v3, setV3] = useState(500);
+  const [v4, setV4] = useState(25);
 
   return (
     <div style={{ maxWidth: 520, margin: "0 auto", padding: "40px 16px" }}>
@@ -39,6 +40,18 @@ export function App() {
           windowStart={0}
           windowEnd={1000}
           step={10}
+        />
+      </Section>
+
+      {/* ── Hard limits ── */}
+      <Section label="Hard limits (min 0, max 100)" value={v4}>
+        <InfiniteSlider
+          value={v4}
+          onChange={setV4}
+          windowStart={0}
+          windowEnd={50}
+          min={0}
+          max={100}
         />
       </Section>
     </div>

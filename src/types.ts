@@ -11,6 +11,11 @@ export interface InfiniteSliderProps {
   /** Initial visible window end.   @default 100 */
   windowEnd?: number;
 
+  /** Hard minimum value. The slider cannot go below this. @default -Infinity */
+  min?: number;
+  /** Hard maximum value. The slider cannot exceed this.   @default Infinity */
+  max?: number;
+
   /**
    * Step size. The value is rounded to the nearest step.
    * Use 0 for continuous (no snapping).
