@@ -1,5 +1,5 @@
 {
-  "name": "infinite-slider",
+  "name": "infinite-slider-react",
   "version": "1.0.0",
   "description": "High-fidelity scalar input with variable sensitivity for React",
   "type": "module",
@@ -13,7 +13,9 @@
       "require": "./dist/infinite-slider.cjs"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.build.json && vite build",
@@ -33,7 +35,13 @@
     "vite": "^6.0.0",
     "vite-plugin-dts": "^4.3.0"
   },
-  "keywords": ["react", "slider", "input", "infinite", "precision"],
+  "keywords": [
+    "react",
+    "slider",
+    "input",
+    "infinite",
+    "precision"
+  ],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.18.3"
